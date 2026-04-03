@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>fighting game test</title>
+    <style>
+        body { margin: 0; }
+        #gameContainer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            flex-direction: column;
+            position: relative;
+        }
+        .mainMenu {
+            display: block;
+            flex-direction: column;
+            align-items: center;
+        }
+        .menu {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            background-color: #fff;
+            border: 1px solid #000;
+        }
+	#announcement {
+            font-size: 40px;
+            position: absolute;
+            top: 150px;
+            left: 570px;
+	}
+	#direction {
+            font-size: 40px;
+            position: absolute;
+            top: 190px;
+            left: 570px;
+	}
+	#player1Inputs {
+            font-size: 40px;
+            position: absolute;
+            top: 20px;
+            left: 20px;
+	}
+	#animationFrame {
+            font-size: 40px;
+            position: absolute;
+            top: 50px;
+            left: 20px;
+	}
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1200" height="500" style="display:none;"></canvas>
+        <div id="announcement"></div>
+	<div id="direction"></div>
+	<div id="player1Inputs"></div>
+	<div id="animationFrame"></div>
+
+        <div id="mainMenu" class="mainMenu">
+	    <h2 id="title" align="center">fighting game test</h2>
+
+        </div>
+        <button id="start" onclick="startGame()">Start</button>
+
+	<div id="pauseMenu" class="menu">
+	    <h2>Game Paused</h2>
+            <button onclick="resume()">Resume</button>
+	</div>
+
+	<div id="gameOver" class="menu">
+	    <h2>Game Over</h2>
+	</div>
+
+    </div>
+
+    <script>
+        const gameCanvas = document.getElementById("gameCanvas");
+        const ctx = gameCanvas.getContext("2d");
+	const pauseMenu = document.getElementById("pauseMenu");
+	const player1 = { x: 250, y: 250, width: 100, height: 160, hp: 100, maxHp: 100, speed: 4, obeyGravity: 1, xVel: 0, Decel: 0.4, grounded: false, jumpSpeed: 15, jumps: 1, maxJumps: 1, isJumping: false, yVel: 0, attackCooldown: false, attackCooldownDuration: 500, damage: 10, knockback: 50, swings: 0, isDodging: false, dodgeCd: 0, xDir: 1, iFrames: 0, invincible: true, inputResetTimer: 0, inputDuration: 25, direction: 5, hitstun: 0, animation: 0, animationFrame: 1, animationLength: 16 };
+	const player2 = { x: 950, y: 250, width: 100, height: 160, hp: 100, maxHp: 100, speed: 4, obeyGravity: 1, xVel: 0, Decel: 0.4, grounded: false, jumpSpeed: 15, jumps: 1, maxJumps: 1, isJumping: false, yVel: 0, attackCooldown: false, attackCooldownDuration: 500, damage: 10, knockback: 50, swings: 0, isDodging: false, dodgeCd: 0, xDir: -1, iFrames: 0, invincible: true, inputResetTimer: 0, inputDuration: 25, direction: 5, hitstun: 0, animation: 0, animationFrame: 1, animationLength: 16 };
+	const player1Inputs = [];
+	const player1Hitboxes = [
+	    { id: 0, animation: 13, name: 'slicingWindsSword', multihit: 0, start: 8, end: 13, recovery: 16, x: 100, y: 0, width: 100, height: 150, color: 'cyan', knockbackX: 70, knockbackY: 0, active: 0, hit: 0 },
+	    { id: 1, animation: 99, name: 'stormFrontSword', multihit: 0, start: 14, end: 20, recovery: 26, x: 100, y: 0, width: 100, height: 150, color: 'cyan', knockbackX: 50, knockbackY: 0, active: 0, hit: 0 },
+	];
+	const player1Projectiles = [
+	    { id: 0, animation: 13, name: 'slicingWinds', multihit: 0, pierce: 1, start: 9, end: 60, duration: 0, x: 0, y: 0, xOffset: 100, yOffset: 0, width: 75, height: 160, vx: 30, vy: 0, color: 'cyan', knockbackX: 20, knockbackY: -2, active: 0, hit: 0 },
+	    { id: 0, animation: 99, name: 'stormFront', multihit: 1, pierce: 30, start: 9, end: 60, duration: 0, x: 0, y: 0, xOffset: 100, yOffset: 0, width: 75, height: 160, vx: 30, vy: 0, color: 'cyan', knockbackX: 50, knockbackY: -2, active: 0, hit: 0 },
+	];
+	const player2Hitboxes = [];
+	const player2Projectiles = [];
+	const platforms = [ { x: 0, y: 490, width: 1200, height: 10 } ];
+	const gravity = 0.5;
+	const sprites = {};
+        let stage = 1;
+	const wave = {};
+        const enemies = [];
+	const particles = [];
+        const keys = { w: 0, a: 0, s: 0, d: 0, j: 0, k: 0 };
+        let mouse = { x: 0, y: 0 };
+        let gameStarted = false;
+	let gamePaused = 0;
+	let timer = 120;
+	let countdownRunning = false;
+	let mouseDown = false;
+	let frameByFrame = 0;
+
+	// general moveset: for each button (light, heavy, and special) there is a move for neutral, forward, up and down inputs plus command inputs. for light and heavy, some attacks are different in the air
+
+        function startGame() {
+            document.getElementById("mainMenu").style.display = "none";
+            document.getElementById("start").style.display = "none";
+            document.getElementById("announcement").style.display = "block";
+            document.getElementById("direction").style.display = "block";
+            gameCanvas.style.display = "block";
+            gameStarted = true;
+	    requestAnimationFrame(gameLoop);
+        }
+
+        function gameLoop() {
+	    if (gameStarted == true) {
+		setTimeout(() => {
+		    if (gamePaused == 0 && player1.hp > 0) {
+                    	requestAnimationFrame(gameLoop);
+		    }
+	    	    // player health check
+	    	    if (player1.hp < 1) {
+			document.getElementById("announcement").innerText = 'Game Over';
+			setTimeout(() => {
+		    	    document.getElementById("announcement").innerText = '';
+		    	    gameCanvas.style.display = "none";
+		    	    document.getElementById("gameOver").style.display = "block";
+			}, 1500);
+	    	    }
+		}, 14);
+	    }
+	    if (frameByFrame == 0) {
+            	requestAnimationFrame(update);
+            	draw();
+	    }
+        }
+
+	function update() {
+	    // player 1
+	    player1.inputResetTimer++;
+	    if (player1.inputResetTimer == player1.inputDuration) {
+		player1Inputs.length = 0;
+		player1.inputResetTimer = 0;
+	    }
+	    player1.animationFrame++;
+	    if (player1.animationFrame > player1.animationLength) {
+		player1.animationFrame = 0;
+		player1.animation = 0;
+	    }
+	    player1.y += player1.yVel;
+	    platforms.forEach((platform, index) => {
+		if (player1.y < platform.y + (platform.height / 2) && player1.x + (player1.width / 2) >= platform.x && player1.x - (player1.width / 2) <= platform.x + platform.width) {
+		    if (player1.y + (player1.height / 2) >= platform.y && player1.yVel >= 0) {
+			player1.y = platform.y - (player1.height / 2);
+			player1.yVel = 0;
+			player1.jumps = player1.maxJumps;
+			player1.grounded = true;
+		    }
+		}
+	    });
+	    if (player1.yVel > 0) {
+		player1.isJumping = false;
+		player1.grounded = false;
+	    } else {
+		player1.isJumping = true;
+	    }
+	    player1.yVel += gravity * player1.obeyGravity;
+
+            if (!player1.isDodging) {
+	    	player1.xVel *= player1.Decel;
+	    	if (keys.a == 1 && player1.animation < 5) {
+		    if (Math.abs(player1.xVel) <= player1.speed) {
+		    	player1.xVel = -player1.speed;
+		    } else {
+			player1.xVel -= player1.speed;
+		    }
+	    	}
+	    	if (keys.d == 1 && player1.animation < 5) {
+		    if (Math.abs(player1.xVel) <= player1.speed) {
+		    	player1.xVel = player1.speed;
+		    } else {
+			player1.xVel += player1.speed;
+		    }
+	    	}
+	    }
+	    player1.xDir = (player2.x - player1.x) / Math.abs(player2.x - player1.x);
+	    player1.x += player1.xVel;
+	    if (Math.abs(player1.xVel) < 0.5 && keys.a == 0 && keys.d == 0) {
+		player1.xVel = 0;
+	    }
+	    if (player1.x - (player1.width / 2) < 0) {
+		player1.x = player1.width / 2;
+	    }
+	    if (player1.x + (player1.width / 2) > gameCanvas.width) {
+		player1.x = gameCanvas.width - (player1.width / 2);
+	    }
+	    if (player1.isDodging) {
+		player1.xVel = 10 * player1.xDir;
+		if (player1.iFrames < 10) {
+		    player1.isDodging = false;
+		}
+	    }
+	    player1.iFrames--;
+	    player1.dodgeCd--;
+
+	    // player 2
+	    player2.inputResetTimer++;
+	    if (player2.inputResetTimer == player1.inputDuration) {
+		player2Inputs.length = 0;
+		player2.inputResetTimer = 0;
+	    }
+	    player2.animationFrame++;
+	    if (player2.animationFrame > player2.animationLength) {
+		player2.animationFrame = 0;
+		player2.animation = 0;
+	    }
+	    player2.y += player2.yVel;
+	    platforms.forEach((platform, index) => {
+		if (player2.y < platform.y + (platform.height / 2) && player2.x + (player2.width / 2) >= platform.x && player2.x - (player2.width / 2) <= platform.x + platform.width) {
+		    if (player2.y + (player2.height / 2) >= platform.y && player2.yVel >= 0) {
+			player2.y = platform.y - (player2.height / 2);
+			player2.yVel = 0;
+			player2.jumps = player2.maxJumps;
+			player2.grounded = true;
+		    }
+		}
+	    });
+	    if (player2.yVel > 0) {
+		player2.isJumping = false;
+		player2.grounded = false;
+	    } else {
+		player2.isJumping = true;
+	    }
+	    player2.yVel += gravity * player2.obeyGravity;
+
+            if (!player2.isDodging) {
+	    	player2.xVel *= player2.Decel;
+	    	if (keys.a == 1 && player2.animation < 5) {
+		    if (Math.abs(player2.xVel) <= player2.speed) {
+		    	//player2.xVel = -player2.speed;
+		    } else {
+			//player2.xVel -= player2.speed;
+		    }
+	    	}
+	    	if (keys.d == 1 && player2.animation < 5) {
+		    if (Math.abs(player2.xVel) <= player2.speed) {
+		    	//player2.xVel = player2.speed;
+		    } else {
+			//player2.xVel += player2.speed;
+		    }
+	    	}
+	    }
+	    player2.xDir = (player1.x - player2.x) / Math.abs(player1.x - player2.x);
+	    player2.x += player2.xVel;
+	    if (Math.abs(player2.xVel) < 0.5 && keys.a == 0 && keys.d == 0) {
+		player2.xVel = 0;
+	    }
+	    if (player2.x - (player2.width / 2) < 0) {
+		player2.x = player2.width / 2;
+	    }
+	    if (player2.x + (player2.width / 2) > gameCanvas.width) {
+		player2.x = gameCanvas.width - (player2.width / 2);
+	    }
+	    if (player2.isDodging) {
+		player2.xVel = 10 * player2.xDir;
+		if (player2.iFrames < 10) {
+		    player2.isDodging = false;
+		}
+	    }
+	    player2.iFrames--;
+	    player2.dodgeCd--;
+
+	    document.getElementById("direction").innerText = player1.direction;
+	    console.log(player1Inputs);
+	    document.getElementById("player1Inputs").innerText = player1Inputs;
+	    document.getElementById("animationFrame").innerText = player1.animationFrame;
+
+	    player1Hitboxes.forEach((hitbox, index) => {
+		let x = player1.x + hitbox.x * player1.xDir;
+		let y = player1.y + hitbox.y;
+		if (player1.animation == hitbox.animation) {
+		    if (player1.animationFrame >= hitbox.start && player1.animationFrame < hitbox.end) {
+			hitbox.active = 1 - (hitbox.active * hitbox.multihit);
+			// if multihit is 0, the hitbox will not deactivate. if multihit is 1, hitbox will toggle on and off every frame
+		    } else {
+			hitbox.active = 0;
+		    }
+		} else {
+		    hitbox.active = 0;
+		}
+		if (hitbox.active == 1) {
+		    if (collisionDetection(x, y, hitbox.width, hitbox.height, player2.x, player2.y, player2.width, player2.height) && hitbox.hit == 0) {
+			player2.hp -= hitbox.damage;
+			player2.xVel = hitbox.knockbackX * player1.xDir;
+			player2.yVel = hitbox.knockbackY;
+			hitbox.hit = 1 - hitbox.multihit;
+		    }
+		} else {
+		    hitbox.hit = 0;
+		}
+	    });
+
+	    player1Projectiles.forEach((projectile, index) => {
+		if (player1.animation == projectile.animation) {
+		    if (player1.animationFrame == projectile.start) {
+		    	projectile.x = player1.x + projectile.xOffset * player1.xDir;
+		    	projectile.y = player1.y + projectile.yOffset;
+			projectile.duration = 0;
+		    	projectile.active = 1;
+			let pierce = projectile.pierce;
+		    }
+		}
+		if (projectile.active == 1) {
+		    projectile.x += projectile.vx * player1.xDir;
+		    projectile.y += projectile.vy;
+		    projectile.duration++;
+		    if (collisionDetection(projectile.x, projectile.y, projectile.width, projectile.height, player2.x, player2.y, player2.width, player2.height) && projectile.hit == 0) {
+			player2.hp -= projectile.damage;
+			player2.xVel = projectile.knockbackX * player1.xDir;
+			player2.yVel = projectile.knockbackY;
+			projectile.hit = 1 - projectile.multihit;
+			if (pierce == 0) {
+			    projectile.active = 0;
+			    projectile.x = 0;
+			    projectile.y = 0;
+			}
+			pierce--;
+		    }
+		} else {
+		    projectile.hit = 0;
+		}
+		if (projectile.duration == projectile.end) {
+		    projectile.active = 0;
+		    projectile.x = 0;
+		    projectile.y = 0;
+		}
+	    });
+	}
+
+	function collisionDetection(x, y, width, height, targetX, targetY, targetWidth, targetHeight) {
+	    if (
+		x + (width / 2) > targetX - (targetWidth / 2)
+		&& x - (width / 2) < targetX + (targetWidth / 2)
+		&& y + (height / 2) > targetY - (targetHeight / 2)
+		&& y - (height / 2) < targetY + (targetHeight / 2)
+	    ) {
+		return true;
+	    } else {
+		return false;
+	    }
+	}
+
+	function updatePlayer1Dir() {
+	    player1.direction = 5 - (1 * keys.a * player1.xDir) + (1 * keys.d * player1.xDir) - (3 * keys.s) + (3 * keys.w);
+	    player1Inputs.push(player1.direction);
+	    player1.inputResetTimer = 0;
+	}
+
+	function lightAttack() {
+	    for (let i = player1Inputs.length - 1; i > -1; i--) {
+	    	if (player1Inputs[i] == 6 && player1Inputs[i - 1] == 3 && player1Inputs[i - 2] == 2  && player1Inputs[i - 3] == 1 && player1Inputs[i - 4] == 4) {
+		    // half circle input
+    		    document.getElementById("announcement").innerText = 'half circle';
+		    player1.animation = 15;
+		    player.animationFrame = 1;
+		    break;
+		} else if (player1Inputs[i] == 6 && player1Inputs[i - 1] == 3 && player1Inputs[i - 2] == 2) {
+		    // quarter circle input
+    		    document.getElementById("announcement").innerText = 'slicing winds';
+		    player1.animation = 13;
+		    player.animationFrame = 1;
+		    break;
+		} else if (player1Inputs[i] == 3 && player1Inputs[i - 1] == 2 && player1Inputs[i - 2] == 5 && player1Inputs[i - 3] == 6) {
+		    // dragon punch input
+    		    document.getElementById("announcement").innerText = 'dragon punch';
+		    player1.animation = 14;
+		    player.animationFrame = 1;
+		    break;
+		} else if (player1Inputs[i] == 6 || player1Inputs[i] == 3 || player1Inputs[i] == 9) {
+		    if (player1.grounded) {
+		    	// forward light
+    		    	document.getElementById("announcement").innerText = 'forward light';
+		    	player1.animation = 6;
+		    	player.animationFrame = 1;
+		    	break;
+		    } else {
+		    	// forward air light
+    		    	document.getElementById("announcement").innerText = 'forward air light';
+		    	player1.animation = 10;
+		    	player.animationFrame = 1;
+		    	break;
+		    }
+		} else if (player1Inputs[i] == 8) {
+		    if (player1.grounded) {
+		    	// up light
+    		    	document.getElementById("announcement").innerText = 'up light';
+		    	player1.animation = 7;
+		    	player.animationFrame = 1;
+		    	break;
+		    } else {
+		    	// up air light
+    		    	document.getElementById("announcement").innerText = 'up air light';
+		    	player1.animation = 11;
+		    	player.animationFrame = 1;
+		    	break;
+		    }
+		} else if (player1Inputs[i] == 2) {
+		    if (player1.grounded) {
+		    	// down light
+    		    	document.getElementById("announcement").innerText = 'down light';
+		    	player1.animation = 8;
+		    	player.animationFrame = 1;
+		    	break;
+		    } else {
+		    	// down air light
+    		    	document.getElementById("announcement").innerText = 'down air light';
+		    	player1.animation = 12;
+		    	player.animationFrame = 1;
+		    	break;
+		    }
+		} else {
+		    if (player1.grounded) {
+		    	// neutral light
+    		    	document.getElementById("announcement").innerText = 'neutral light';
+		    	player1.animation = 5;
+		    	player.animationFrame = 1;
+		    	break;
+		    } else {
+		    	// forward air light
+    		    	document.getElementById("announcement").innerText = 'neutral air light';
+		    	player1.animation = 9;
+		    	player.animationFrame = 1;
+		    	break;
+		    }
+		}
+	    }
+	}
+
+	function heavyAttack() {
+
+	}
+
+	function specialAttack() {
+
+	}
+
+        function draw() {
+            ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+	    ctx.fillStyle = "blue";
+	    ctx.fillRect(player1.x - (player1.width / 2), player1.y - (player1.height / 2), player1.width, player1.height);
+	    ctx.fillStyle = "red";
+	    ctx.fillRect(player2.x - (player2.width / 2), player2.y - (player2.height / 2), player2.width, player2.height);
+	
+	    platforms.forEach(platform => {
+		ctx.fillStyle = "grey";
+		ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+	    });
+
+	    player1Projectiles.forEach(projectile => {
+		ctx.fillStyle = projectile.color;
+		ctx.beginPath();
+		ctx.arc(projectile.x, projectile.y, projectile.radius, 0, 2 * Math.PI);
+		ctx.fill();
+	    });
+
+	    player1Hitboxes.forEach(hitbox => {
+		if (hitbox.active == 1) {
+		    ctx.fillStyle = hitbox.color;
+		    ctx.fillRect(player1.x + hitbox.x - (hitbox.width / 2), player1.y + hitbox.y - (hitbox.height / 2), hitbox.width, hitbox.height);
+		}
+	    });
+
+	    player1Projectiles.forEach(projectile => {
+		if (projectile.active == 1) {
+		    ctx.fillStyle = projectile.color;
+		    ctx.fillRect(projectile.x - (projectile.width / 2), projectile.y - (projectile.height / 2), projectile.width, projectile.height);
+		}
+	    });
+	}
+
+        document.addEventListener("keypress", (e) => {
+            if (e.key === 'w') {
+		keys.w = 1;
+		updatePlayer1Dir();
+	    }
+            if (e.key === 'a') {
+		keys.a = 1;
+		updatePlayer1Dir();
+	    }
+            if (e.key === 's') {
+		keys.s = 1;
+		updatePlayer1Dir();
+	    }
+            if (e.key === 'd') {
+		keys.d = 1;
+		updatePlayer1Dir();
+	    }
+	    if (e.key === 'j' && keys.j == 0 && player1.hitstun < 1 && player1.animation == 0) {
+		lightAttack();
+		keys.j = 1;
+	    }
+	    if (e.key === 'k' && keys.k == 0 && player1.hitstun < 1 && player1.animation == 0) {
+		heavyAttack();
+		keys.k = 1;
+	    }
+	    if (e.key === 'p' && gameStarted) {
+		//showPauseMenu();
+		requestAnimationFrame(update);
+		draw();
+	    }
+	    if (e.key === 'm' && gameStarted) {
+		frameByFrame = 1 - frameByFrame;
+	    }
+	    if (e.key === ' ' && player1.jumps > 0 && player1.grounded) {
+		player1.yVel = -player1.jumpSpeed;
+		player1.jumps--;
+		player1.grounded = false;
+		player1.isDodging = false;
+	    }
+        });
+
+        document.addEventListener("keyup", (e) => {
+            if (e.key === 'w') {
+		keys.w = 0;
+		updatePlayer1Dir();
+	    }
+            if (e.key === 'a') {
+		keys.a = 0;
+		updatePlayer1Dir();
+	    }
+            if (e.key === 's') {
+		keys.s = 0;
+		updatePlayer1Dir();
+	    }
+            if (e.key === 'd') {
+		keys.d = 0;
+		updatePlayer1Dir();
+	    }
+	    if (e.key === 'j' && keys.j == 1) {
+		keys.j = 0;
+	    }
+	    if (e.key === 'k' && keys.k == 1) {
+		keys.k = 0;
+	    }
+	    if (e.key === ' ' && player1.isJumping) {
+		player1.yVel = 0;
+		player1.isJumping = false;
+	    }
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            const rect = gameCanvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+	document.addEventListener("mousedown", (e) => {
+	    if (e.button === 0) {
+		mouseDown = true;
+	    }
+	});
+
+	document.addEventListener("mouseup", (e) => {
+	    if (e.button === 0) {
+		mouseDown = false;
+	    }
+	});
+
+    </script>
+</body>
+</html>
